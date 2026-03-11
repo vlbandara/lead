@@ -1,0 +1,14 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Deploy as Web Service (free tier). Set OPENROUTER_API_KEY in Render dashboard.
+
+services:
+  - type: web
+    name: contact-enricher
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn --bind 0.0.0.0:$PORT app:app"
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+        # Add your key in Render Dashboard: Service → Environment
