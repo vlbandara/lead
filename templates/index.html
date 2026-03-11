@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Contact Enricher — Drop CSV, Get Enriched CSV</title>
+  <title>Contact Enricher — Add URLs or CSV, See Results</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -23,61 +23,51 @@
       color: var(--text);
       min-height: 100vh;
       margin: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
       padding: 1.5rem;
     }
-    h1 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      margin: 0 0 0.25rem 0;
+    .container { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.25rem 0; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+    .input-section {
+      background: var(--surface);
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem;
     }
-    .sub {
-      color: var(--muted);
+    .input-section.has-file { border-color: var(--success); background: rgba(63, 185, 80, 0.08); }
+    .input-section label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.35rem; }
+    #urls {
+      width: 100%;
+      min-height: 100px;
+      padding: 0.6rem 0.75rem;
+      font-family: inherit;
       font-size: 0.9rem;
-      margin-bottom: 1.5rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      resize: vertical;
     }
+    #urls::placeholder { color: var(--muted); }
+    .or { text-align: center; color: var(--muted); font-size: 0.85rem; margin: 0.75rem 0; }
     .dropzone {
       border: 2px dashed var(--border);
-      background: var(--surface);
-      border-radius: 12px;
-      padding: 2rem 3rem;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 1rem;
       text-align: center;
       cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-      max-width: 420px;
-      width: 100%;
+      transition: border-color 0.2s;
     }
-    .dropzone:hover, .dropzone.dragover {
-      border-color: var(--accent);
-      background: rgba(88, 166, 255, 0.06);
-    }
-    .dropzone.has-file {
-      border-color: var(--success);
-      background: rgba(63, 185, 80, 0.08);
-    }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); }
     .dropzone input { display: none; }
-    .file-chosen {
-      margin-top: 0.75rem;
-      font-size: 0.9rem;
-      color: var(--success);
-      word-break: break-all;
-    }
+    .file-chosen { font-size: 0.85rem; color: var(--success); margin-top: 0.35rem; }
     .file-chosen::before { content: '✓ '; }
-    .dropzone .icon {
-      font-size: 2rem;
-      margin-bottom: 0.5rem;
-      opacity: 0.8;
-    }
-    .dropzone .hint {
-      color: var(--muted);
-      font-size: 0.85rem;
-      margin-top: 0.5rem;
-    }
+    .limit { color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem; }
+
     .btn {
-      margin-top: 1rem;
       padding: 0.6rem 1.4rem;
       font-size: 1rem;
       background: var(--accent);
@@ -87,16 +77,18 @@
       cursor: pointer;
       font-weight: 500;
       transition: background 0.2s;
+      margin-top: 0.75rem;
     }
     .btn:hover:not(:disabled) { background: var(--accent-hover); }
     .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn.secondary { background: var(--border); }
+    .btn.secondary:hover:not(:disabled) { background: var(--muted); }
+
     .message {
       margin-top: 1rem;
       padding: 0.75rem 1rem;
       border-radius: 8px;
       font-size: 0.9rem;
-      max-width: 420px;
-      width: 100%;
     }
     .message.error { background: rgba(248, 81, 73, 0.15); color: var(--error); }
     .message.success { background: rgba(63, 185, 80, 0.15); color: var(--success); }
@@ -112,31 +104,82 @@
       margin-right: 0.5rem;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .limit { color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem; }
+
+    .results-section { margin-top: 2rem; }
+    .results-section h2 { font-size: 1.1rem; margin: 0 0 0.75rem 0; }
+    .results-actions { margin-bottom: 0.75rem; }
+    .results-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: var(--border); color: var(--text); font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    td a { color: var(--accent); }
+    .empty-cell { color: var(--muted); }
   </style>
 </head>
 <body>
-  <h1>Contact Enricher</h1>
-  <p class="sub">Upload a CSV with website URLs → download the same CSV with Email, Phone & AI Summary</p>
+  <div class="container">
+    <h1>Contact Enricher</h1>
+    <p class="sub">Paste website URLs or upload a CSV → see results in the table and download</p>
 
-  <form id="form" class="dropzone" action="/enrich" method="post" enctype="multipart/form-data">
-    <input type="file" name="csv" id="file" accept=".csv,.txt" required>
-    <div class="icon">📄</div>
-    <div id="dropLabel">Drop your CSV here or click to choose</div>
-    <div id="fileChosen" class="file-chosen" hidden></div>
-    <div class="hint">One website URL per row (column "website" or "url", or first column)</div>
-    <p class="limit">Free tier: max {{ max_urls }} URL per file (avoids timeout).</p>
-    <button type="submit" class="btn" id="submitBtn">Enrich & download</button>
-  </form>
+    <form id="form">
+      <div class="input-section" id="inputSection">
+        <label for="urls">Website URLs (one per line)</label>
+        <textarea id="urls" name="urls" placeholder="https://example.com&#10;https://render.com"></textarea>
+        <p class="limit">Max {{ max_urls }} URLs per request.</p>
 
-  <div id="message" class="message" role="alert" hidden></div>
+        <p class="or">— or upload a CSV —</p>
+        <div class="dropzone" id="dropzone">
+          <input type="file" name="csv" id="file" accept=".csv,.txt">
+          <span id="dropLabel">Drop CSV here or click to choose</span>
+          <div id="fileChosen" class="file-chosen" hidden></div>
+        </div>
+      </div>
+      <button type="submit" class="btn" id="submitBtn">Enrich</button>
+    </form>
+
+    <div id="message" class="message" role="alert" hidden></div>
+
+    <section id="resultsSection" class="results-section" hidden>
+      <h2>Results</h2>
+      <div class="results-actions">
+        <button type="button" class="btn secondary" id="downloadCsvBtn">Download CSV</button>
+      </div>
+      <div class="results-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Website</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>AI Summary</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
 
   <script>
     const form = document.getElementById('form');
+    const urlsInput = document.getElementById('urls');
     const fileInput = document.getElementById('file');
     const submitBtn = document.getElementById('submitBtn');
     const messageEl = document.getElementById('message');
     const fileChosenEl = document.getElementById('fileChosen');
+    const inputSection = document.getElementById('inputSection');
+    const dropzone = document.getElementById('dropzone');
+    const resultsSection = document.getElementById('resultsSection');
+    const resultsBody = document.getElementById('resultsBody');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+
+    let lastResults = [];
 
     function showMessage(text, type) {
       messageEl.textContent = text;
@@ -152,20 +195,16 @@
       if (f && (f.name.endsWith('.csv') || f.name.endsWith('.txt'))) {
         fileChosenEl.textContent = f.name;
         fileChosenEl.hidden = false;
-        form.classList.add('has-file');
+        inputSection.classList.add('has-file');
       } else {
         fileChosenEl.hidden = true;
         fileChosenEl.textContent = '';
-        form.classList.remove('has-file');
+        inputSection.classList.remove('has-file');
       }
     }
 
-    const dropzone = form;
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
-      dropzone.addEventListener(ev, e => {
-        e.preventDefault();
-        e.stopPropagation();
-      });
+      dropzone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); });
     });
     ['dragenter', 'dragover'].forEach(ev => {
       dropzone.addEventListener(ev, () => dropzone.classList.add('dragover'));
@@ -187,45 +226,80 @@
     });
     fileInput.addEventListener('change', updateFileFeedback);
 
+    dropzone.addEventListener('click', (e) => {
+      if (e.target === fileInput) return;
+      fileInput.click();
+    });
+
+    function renderResults(results) {
+      lastResults = results;
+      resultsBody.innerHTML = results.map(r => {
+        const email = (r.email || '').trim();
+        const phone = (r.phone || '').trim();
+        const summary = (r.ai_summary || '').trim();
+        const emailCell = email ? escapeHtml(email) : '<span class="empty-cell">—</span>';
+        const phoneCell = phone ? escapeHtml(phone) : '<span class="empty-cell">—</span>';
+        const summaryCell = summary ? escapeHtml(summary) : '<span class="empty-cell">—</span>';
+        return '<tr><td><a href="' + escapeHtml(r.website) + '" target="_blank" rel="noopener">' + escapeHtml(r.website) + '</a></td><td>' + emailCell + '</td><td>' + phoneCell + '</td><td>' + summaryCell + '</td></tr>';
+      }).join('');
+      resultsSection.hidden = false;
+    }
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    downloadCsvBtn.addEventListener('click', () => {
+      if (!lastResults.length) return;
+      const header = 'Website,Email,Phone,AI Summary\n';
+      const rows = lastResults.map(r => {
+        const email = (r.email || '').replace(/"/g, '""');
+        const phone = (r.phone || '').replace(/"/g, '""');
+        const summary = (r.ai_summary || '').replace(/"/g, '""');
+        return '"' + (r.website || '').replace(/"/g, '""') + '","' + email + '","' + phone + '","' + summary + '"';
+      }).join('\n');
+      const blob = new Blob([header + rows], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'enriched_contacts.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
     form.addEventListener('submit', async e => {
       e.preventDefault();
-      if (!fileInput.files.length) return;
+      const urlsText = urlsInput.value.trim();
+      const hasFile = fileInput.files.length && (fileInput.files[0].name.endsWith('.csv') || fileInput.files[0].name.endsWith('.txt'));
+      if (!urlsText && !hasFile) {
+        showMessage('Enter at least one URL in the box or upload a CSV file.', 'error');
+        return;
+      }
       hideMessage();
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<span class="spinner"></span> Processing…';
 
       const fd = new FormData();
-      fd.append('csv', fileInput.files[0]);
+      if (urlsText) {
+        fd.set('urls', urlsText);
+      } else if (hasFile) {
+        fd.append('csv', fileInput.files[0]);
+      }
 
       try {
         const res = await fetch('/enrich', { method: 'POST', body: fd });
-        if (res.ok) {
-          const blob = await res.blob();
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'enriched_contacts.csv';
-          a.click();
-          URL.revokeObjectURL(a.href);
-          showMessage('Download started. Check your downloads folder.', 'success');
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.results)) {
+          renderResults(data.results);
+          showMessage('Done. ' + data.results.length + ' result(s) below.', 'success');
         } else {
-          let msg = 'Something went wrong. Try again.';
-          const contentType = res.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            const data = await res.json().catch(() => ({}));
-            if (data.error) msg = data.error;
-          } else {
-            const text = await res.text();
-            if (text && !text.trimStart().startsWith('<') && text.length < 300) msg = text;
-            else if (res.status >= 500) msg = 'Server error (' + res.status + '). Try again in a moment or check back later.';
-            else if (text) msg = 'Error ' + res.status + ': ' + text.slice(0, 120).replace(/\s+/g, ' ').trim() + (text.length > 120 ? '…' : '');
-          }
-          showMessage(msg, 'error');
+          showMessage(data.error || 'Something went wrong. Try again.', 'error');
         }
       } catch (err) {
         showMessage('Network error. Check your connection and try again.', 'error');
       } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Enrich & download';
+        submitBtn.textContent = 'Enrich';
       }
     });
   </script>

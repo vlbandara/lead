@@ -19,8 +19,8 @@ _this_dir = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder=os.path.join(_this_dir, "templates"))
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB max upload
 
-# Free tier: request and worker timeouts are tight. 1 URL per request is reliable.
-MAX_URLS_PER_REQUEST = 1
+# Max URLs per request (free tier may timeout with many URLs; use 1–3 for reliability)
+MAX_URLS_PER_REQUEST = 10
 
 URL_COLUMN_NAMES = ("website", "url", "site", "domain", "link", "website_url")
 
@@ -63,42 +63,63 @@ def index():
     return render_template("index.html", max_urls=MAX_URLS_PER_REQUEST)
 
 
-@app.route("/enrich", methods=["POST"])
-def enrich():
-    if "csv" not in request.files:
-        return jsonify({"error": "No CSV file uploaded"}), 400
-    f = request.files["csv"]
-    if not f.filename or not f.filename.lower().endswith((".csv", ".txt")):
-        return jsonify({"error": "Please upload a CSV file"}), 400
+def _collect_urls_from_request():
+    """Return (urls, extra_rows) from either CSV file or 'urls' form field. extra_rows is list of (url, [extra_cols]) for CSV."""
+    urls_text = (request.form.get("urls") or "").strip()
+    if urls_text:
+        urls = []
+        for line in urls_text.splitlines():
+            u = _normalize_url(line)
+            if u and _is_valid_url(u):
+                urls.append(u)
+        return urls, [(u, []) for u in urls]
+
+    f = request.files.get("csv")
+    if not f or not f.filename or not f.filename.lower().endswith((".csv", ".txt")):
+        return None, None
 
     try:
         stream = io.StringIO(f.stream.read().decode("utf-8", errors="replace"))
         reader = csv.reader(stream)
         rows = list(reader)
     except Exception as e:
-        return jsonify({"error": f"Invalid CSV: {e}"}), 400
+        raise ValueError(f"Invalid CSV: {e}")
 
     if not rows:
-        return jsonify({"error": "CSV file is empty"}), 400
+        raise ValueError("CSV file is empty")
 
     headers = rows[0]
     url_index = _detect_url_column(headers)
-    new_headers = headers + ["Email", "Phone", "AI Summary"]
-
-    # Collect URLs from first column or detected column (skip header)
     urls = []
+    extra_rows = []
     for r in rows[1:]:
         if len(r) > url_index:
             u = _normalize_url(r[url_index])
             if u and _is_valid_url(u):
                 urls.append(u)
+                extra_cols = [c for i, c in enumerate(r) if i != url_index]
+                extra_rows.append((u, extra_cols))
+    return urls, extra_rows
+
+
+@app.route("/enrich", methods=["POST"])
+def enrich():
+    try:
+        urls, extra_rows = _collect_urls_from_request()
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    if urls is None:
+        return jsonify({"error": "Add website URLs in the text box, or upload a CSV file."}), 400
 
     if not urls:
-        return jsonify({"error": "No valid website URLs found in the CSV. Use a column named 'website' or 'url', or put URLs in the first column."}), 400
+        return jsonify({
+            "error": "No valid website URLs found. Enter one URL per line, or use a CSV with a 'website' or 'url' column.",
+        }), 400
 
     if len(urls) > MAX_URLS_PER_REQUEST:
         return jsonify({
-            "error": f"Too many URLs ({len(urls)}). Maximum is {MAX_URLS_PER_REQUEST} per file on free tier.",
+            "error": f"Too many URLs ({len(urls)}). Maximum is {MAX_URLS_PER_REQUEST} per request.",
         }), 400
 
     if not (OPENROUTER_API_KEY or "").strip():
@@ -107,7 +128,6 @@ def enrich():
         }), 500
 
     try:
-        # Enrich each URL (sequential to stay within timeout and rate limits)
         url_to_contact = {}
         for u in urls:
             contact = gather_contact_info(u)
@@ -116,28 +136,20 @@ def enrich():
             if contact and contact.get("Website"):
                 url_to_contact[contact["Website"]] = contact
 
-        # Build output CSV: original rows + enriched columns
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(new_headers)
-
-        for r in rows[1:]:
-            if len(r) <= url_index:
-                writer.writerow(_enrich_row(r, url_index, None))
-                continue
-            u = _normalize_url(r[url_index])
-            if not u or not _is_valid_url(u):
-                writer.writerow(_enrich_row(r, url_index, None))
-                continue
+        results = []
+        for i, u in enumerate(urls):
             contact = url_to_contact.get(clean_url(u)) or url_to_contact.get(u)
-            writer.writerow(_enrich_row(r, url_index, contact))
+            row = {
+                "website": u,
+                "email": ", ".join(contact.get("Email") or []) if contact else "",
+                "phone": ", ".join(contact.get("Phone") or []) if contact else "",
+                "ai_summary": (contact.get("AI Summary") or "").strip() if contact else "",
+            }
+            if extra_rows and i < len(extra_rows):
+                row["_extra"] = extra_rows[i][1]
+            results.append(row)
 
-        output.seek(0)
-        return Response(
-            output.getvalue(),
-            mimetype="text/csv",
-            headers={"Content-Disposition": "attachment; filename=enriched_contacts.csv"},
-        )
+        return jsonify({"results": results})
     except Exception as e:
         return jsonify({
             "error": f"Enrichment failed: {str(e)}",
