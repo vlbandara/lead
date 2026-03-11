@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Enricher — Drop CSV, Get Enriched CSV</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4f;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-hover: #79b8ff;
+      --success: #3fb950;
+      --error: #f85149;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0 0 0.25rem 0;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+    .dropzone {
+      border: 2px dashed var(--border);
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 2rem 3rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      max-width: 420px;
+      width: 100%;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(88, 166, 255, 0.06);
+    }
+    .dropzone input { display: none; }
+    .dropzone .icon {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      opacity: 0.8;
+    }
+    .dropzone .hint {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+    }
+    .btn {
+      margin-top: 1rem;
+      padding: 0.6rem 1.4rem;
+      font-size: 1rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .message {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      max-width: 420px;
+      width: 100%;
+    }
+    .message.error { background: rgba(248, 81, 73, 0.15); color: var(--error); }
+    .message.success { background: rgba(63, 185, 80, 0.15); color: var(--success); }
+    .spinner {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 0.5rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .limit { color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Contact Enricher</h1>
+  <p class="sub">Upload a CSV with website URLs → download the same CSV with Email, Phone & AI Summary</p>
+
+  <form id="form" class="dropzone" action="/enrich" method="post" enctype="multipart/form-data">
+    <input type="file" name="csv" id="file" accept=".csv,.txt" required>
+    <div class="icon">📄</div>
+    <div>Drop your CSV here or click to choose</div>
+    <div class="hint">One website URL per row (column "website" or "url", or first column)</div>
+    <p class="limit">Max {{ max_urls }} URLs per file on free tier.</p>
+    <button type="submit" class="btn" id="submitBtn">Enrich & download</button>
+  </form>
+
+  <div id="message" class="message" role="alert" hidden></div>
+
+  <script>
+    const form = document.getElementById('form');
+    const fileInput = document.getElementById('file');
+    const submitBtn = document.getElementById('submitBtn');
+    const messageEl = document.getElementById('message');
+
+    function showMessage(text, type) {
+      messageEl.textContent = text;
+      messageEl.className = 'message ' + type;
+      messageEl.hidden = false;
+    }
+    function hideMessage() {
+      messageEl.hidden = true;
+    }
+
+    const dropzone = form;
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
+      dropzone.addEventListener(ev, e => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+    ['dragenter', 'dragover'].forEach(ev => {
+      dropzone.addEventListener(ev, () => dropzone.classList.add('dragover'));
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+      dropzone.addEventListener(ev, () => dropzone.classList.remove('dragover'));
+    });
+    dropzone.addEventListener('drop', e => {
+      const f = e.dataTransfer.files[0];
+      if (f && (f.name.endsWith('.csv') || f.name.endsWith('.txt'))) {
+        fileInput.files = e.dataTransfer.files;
+      }
+    });
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!fileInput.files.length) return;
+      hideMessage();
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span> Processing…';
+
+      const fd = new FormData();
+      fd.append('csv', fileInput.files[0]);
+
+      try {
+        const res = await fetch('/enrich', { method: 'POST', body: fd });
+        if (res.ok) {
+          const blob = await res.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'enriched_contacts.csv';
+          a.click();
+          URL.revokeObjectURL(a.href);
+          showMessage('Download started. Check your downloads folder.', 'success');
+        } else {
+          const data = await res.json().catch(() => ({}));
+          showMessage(data.error || 'Something went wrong. Try again.', 'error');
+        }
+      } catch (err) {
+        showMessage('Network error. Check your connection and try again.', 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Enrich & download';
+      }
+    });
+  </script>
+</body>
+</html>
