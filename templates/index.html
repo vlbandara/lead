@@ -54,7 +54,18 @@
       border-color: var(--accent);
       background: rgba(88, 166, 255, 0.06);
     }
+    .dropzone.has-file {
+      border-color: var(--success);
+      background: rgba(63, 185, 80, 0.08);
+    }
     .dropzone input { display: none; }
+    .file-chosen {
+      margin-top: 0.75rem;
+      font-size: 0.9rem;
+      color: var(--success);
+      word-break: break-all;
+    }
+    .file-chosen::before { content: '✓ '; }
     .dropzone .icon {
       font-size: 2rem;
       margin-bottom: 0.5rem;
@@ -111,7 +122,8 @@
   <form id="form" class="dropzone" action="/enrich" method="post" enctype="multipart/form-data">
     <input type="file" name="csv" id="file" accept=".csv,.txt" required>
     <div class="icon">📄</div>
-    <div>Drop your CSV here or click to choose</div>
+    <div id="dropLabel">Drop your CSV here or click to choose</div>
+    <div id="fileChosen" class="file-chosen" hidden></div>
     <div class="hint">One website URL per row (column "website" or "url", or first column)</div>
     <p class="limit">Max {{ max_urls }} URLs per file on free tier.</p>
     <button type="submit" class="btn" id="submitBtn">Enrich & download</button>
@@ -124,6 +136,7 @@
     const fileInput = document.getElementById('file');
     const submitBtn = document.getElementById('submitBtn');
     const messageEl = document.getElementById('message');
+    const fileChosenEl = document.getElementById('fileChosen');
 
     function showMessage(text, type) {
       messageEl.textContent = text;
@@ -132,6 +145,19 @@
     }
     function hideMessage() {
       messageEl.hidden = true;
+    }
+
+    function updateFileFeedback() {
+      const f = fileInput.files[0];
+      if (f && (f.name.endsWith('.csv') || f.name.endsWith('.txt'))) {
+        fileChosenEl.textContent = f.name;
+        fileChosenEl.hidden = false;
+        form.classList.add('has-file');
+      } else {
+        fileChosenEl.hidden = true;
+        fileChosenEl.textContent = '';
+        form.classList.remove('has-file');
+      }
     }
 
     const dropzone = form;
@@ -145,14 +171,21 @@
       dropzone.addEventListener(ev, () => dropzone.classList.add('dragover'));
     });
     ['dragleave', 'drop'].forEach(ev => {
-      dropzone.addEventListener(ev, () => dropzone.classList.remove('dragover'));
+      dropzone.addEventListener(ev, () => {
+        dropzone.classList.remove('dragover');
+        if (ev === 'drop') updateFileFeedback();
+      });
     });
     dropzone.addEventListener('drop', e => {
       const f = e.dataTransfer.files[0];
       if (f && (f.name.endsWith('.csv') || f.name.endsWith('.txt'))) {
         fileInput.files = e.dataTransfer.files;
+        updateFileFeedback();
+      } else {
+        showMessage('Please drop a CSV or TXT file.', 'error');
       }
     });
+    fileInput.addEventListener('change', updateFileFeedback);
 
     form.addEventListener('submit', async e => {
       e.preventDefault();
@@ -175,8 +208,18 @@
           URL.revokeObjectURL(a.href);
           showMessage('Download started. Check your downloads folder.', 'success');
         } else {
-          const data = await res.json().catch(() => ({}));
-          showMessage(data.error || 'Something went wrong. Try again.', 'error');
+          let msg = 'Something went wrong. Try again.';
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await res.json().catch(() => ({}));
+            if (data.error) msg = data.error;
+          } else {
+            const text = await res.text();
+            if (text && !text.trimStart().startsWith('<') && text.length < 300) msg = text;
+            else if (res.status >= 500) msg = 'Server error (' + res.status + '). Try again in a moment or check back later.';
+            else if (text) msg = 'Error ' + res.status + ': ' + text.slice(0, 120).replace(/\s+/g, ' ').trim() + (text.length > 120 ? '…' : '');
+          }
+          showMessage(msg, 'error');
         }
       } catch (err) {
         showMessage('Network error. Check your connection and try again.', 'error');
