@@ -20,7 +20,7 @@ from datetime import datetime
 
 # ── OpenRouter AI config ──────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL   = "openai/gpt-oss-20b:nitro"
+OPENROUTER_MODEL   = "arcee-ai/trinity-large-preview:free"
 OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
 
 # Configure logging
@@ -163,7 +163,8 @@ def _call_llm(prompt: str, url: str = "", max_tokens: int = 600) -> str:
     try:
         res = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=30)
         res.raise_for_status()
-        return res.json()["choices"][0]["message"]["content"].strip()
+        content = res.json()["choices"][0]["message"].get("content")
+        return (content or "").strip()
     except Exception as e:
         logging.warning(f"{get_timestamp()} - LLM call failed: {e}")
         return ""
