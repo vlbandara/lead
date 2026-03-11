@@ -115,7 +115,7 @@ Open http://localhost:5001 — drop a CSV or choose a file, then click **Enrich 
 1. Push this repo to GitHub and connect it to [Render](https://render.com).
 2. Create a **Web Service**, connect the repo, and use:
    - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `gunicorn --bind 0.0.0.0:$PORT app:app`
+   - **Start command:** `gunicorn --bind 0.0.0.0:$PORT --timeout 120 app:app`
 3. In the service **Environment** tab, add:
    - **Key:** `OPENROUTER_API_KEY`  
    - **Value:** your OpenRouter API key (from https://openrouter.ai)

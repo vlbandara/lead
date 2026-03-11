@@ -56,7 +56,7 @@ Use these settings (Render will guess some of them):
 | **Branch** | `main` |
 | **Runtime** | `Python 3` |
 | **Build Command** | `pip install -r requirements.txt` |
-| **Start Command** | `gunicorn --bind 0.0.0.0:$PORT app:app` |
+| **Start Command** | `gunicorn --bind 0.0.0.0:$PORT --timeout 120 app:app` |
 
 - **Instance type:** leave as **Free** (or pick Free explicitly if you see a plan selector).
 
@@ -102,6 +102,7 @@ Do **not** click **Create Web Service** yet. Add the API key first.
 
 - **Build fails:** Check the **Logs** tab for errors. Often it’s a missing dependency in `requirements.txt` or a typo in Build/Start command.
 - **“Application failed to respond” / 503:** The free instance may have spun down. Reload the page; the first request after idle can take 30–60 seconds to wake the service.
+- **WORKER TIMEOUT / “Something went wrong” after upload:** The app is limited to **1 URL per CSV** on free tier so the request can finish before the worker times out. Use a CSV with a single website URL. In Render → Service → Settings, set **Start Command** to `gunicorn --bind 0.0.0.0:$PORT --timeout 120 app:app` so the worker allows up to 2 minutes per request.
 - **Enrich returns no data or errors:** Confirm `OPENROUTER_API_KEY` is set correctly in the Render **Environment** tab (no extra spaces, full key). Check the **Logs** tab for Python errors.
 - **Need to change Build/Start later:** In the Render dashboard, open your service → **Settings** → update **Build Command** and **Start Command**, then trigger a **Manual Deploy** from the **Manual Deploy** menu.
 
