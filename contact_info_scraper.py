@@ -20,7 +20,7 @@ from datetime import datetime
 
 # ── OpenRouter AI config ──────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL   = "arcee-ai/trinity-large-preview:free"
+OPENROUTER_MODEL   = "openai/gpt-oss-20b:nitro"
 OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
 
 # Configure logging
