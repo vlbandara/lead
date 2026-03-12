@@ -1,0 +1,39 @@
+[
+  {
+    "Website": "https://render.com/",
+    "Email": [
+      "support@render.com"
+    ],
+    "Phone": [],
+    "AI Summary": "Render is a cloud platform offering infrastructure services with sales contact available via email"
+  },
+  {
+    "Website": "https://stripe.com/",
+    "Email": [
+      "sales@stripe.com"
+    ],
+    "Phone": [
+      "888 926 2289"
+    ],
+    "AI Summary": "Sales contact form for Stripe with email support"
+  },
+  {
+    "Website": "https://github.com/",
+    "Email": [],
+    "Phone": [],
+    "AI Summary": "No valid contact information found on the webpage."
+  },
+  {
+    "Website": "https://celltronics.lk/",
+    "Email": [
+      "info@celltronics.lk"
+    ],
+    "Phone": [
+      "+94 47 774 89289",
+      "011 2574",
+      "011 2574475",
+      "077 748 9289"
+    ],
+    "AI Summary": "Celltronics (Pvt) Ltd is a Sri Lankan electronics retailer offering mobile phones, accessories, and gadgets with multiple contact options."
+  }
+]

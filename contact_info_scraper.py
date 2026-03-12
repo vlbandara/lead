@@ -5,6 +5,7 @@ import requests
 import re
 import json
 import time
+import random
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -144,6 +145,49 @@ def get_phone(html):
     raw = set(num for pattern in phone_patterns for num in re.findall(pattern, html))
     return set(p for p in raw if _phone_has_min_digits(p))
 
+
+def normalize_phone(phone: str) -> str:
+    """Normalize phone number to a standard format."""
+    digits = re.sub(r'\D', '', phone)
+    
+    # Sri Lankan mobile: 07X XXX XXXX (10 digits starting with 7)
+    if len(digits) == 10 and digits.startswith('7'):
+        return f"+94 {digits[0:2]} {digits[2:5]} {digits[5:]}"
+    
+    # International: 9477 XXXX XXXX (11 digits starting with 947)
+    if len(digits) == 11 and digits.startswith('947'):
+        return f"+94 {digits[3:5]} {digits[5:8]} {digits[8:]}"
+    
+    # Already has +94 prefix with space: +94 77 XXX XXXX
+    if phone.startswith('+94'):
+        return phone
+    
+    # US/other: keep as-is if short
+    if len(digits) <= 10:
+        return phone
+    return phone
+
+
+def dedup_and_normalize_phones(phones: set) -> list:
+    """Deduplicate and normalize phone numbers."""
+    # First normalize all phones
+    normalized = []
+    for phone in phones:
+        norm = normalize_phone(phone)
+        normalized.append(norm)
+    
+    # Now deduplicate by comparing digit-only versions
+    seen_digits = set()
+    unique_phones = []
+    for phone in normalized:
+        digits = re.sub(r'\D', '', phone)
+        if digits and digits not in seen_digits:
+            seen_digits.add(digits)
+            unique_phones.append(phone)
+    
+    return sorted(unique_phones)
+
+
 # ── OpenRouter LLM helpers ────────────────────────────────────────────────────
 
 def _call_llm(prompt: str, url: str = "", max_tokens: int = 600) -> str:
@@ -271,15 +315,46 @@ Strict rules — READ CAREFULLY:
 
 # ── Core scraping helpers ─────────────────────────────────────────────────────
 
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0",
+]
+
+def _browser_headers(url: str) -> dict:
+    """Return realistic browser-like headers for the given URL."""
+    parsed = urlparse(url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    return {
+        "User-Agent": random.choice(_USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": origin,
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Cache-Control": "max-age=0",
+    }
+
 def log_no_results(info_type, source):
     msg = f'{get_timestamp()} - No {info_type} found on {source}.'
     logging.info(msg)
     print(msg)
 
-def fetch_data_with_error_handling(url, headers, max_retries: int = 3):
+def fetch_data_with_error_handling(url, headers=None, max_retries: int = 3):
+    session = requests.Session()
     for attempt in range(max_retries):
         try:
-            res = requests.get(url, headers=headers, timeout=15)
+            req_headers = _browser_headers(url)
+            if headers:
+                req_headers.update(headers)
+            res = session.get(url, headers=req_headers, timeout=20, allow_redirects=True)
             res.raise_for_status()
             return res
         except requests.exceptions.RequestException as e:
@@ -341,7 +416,7 @@ def search_google(company_name):
         return []
 
 def get_phone_from_social_media(url):
-    res = fetch_data_with_error_handling(url, headers={'User-Agent': 'Mozilla/5.0'})
+    res = fetch_data_with_error_handling(url)
     if res:
         return get_phone(BeautifulSoup(res.text, 'lxml').get_text())
     return []
@@ -349,8 +424,7 @@ def get_phone_from_social_media(url):
 # ── Main gather function ──────────────────────────────────────────────────────
 
 def gather_contact_info(url):
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    res = fetch_data_with_error_handling(url, headers)
+    res = fetch_data_with_error_handling(url)
 
     if not res:
         return None
@@ -390,7 +464,7 @@ def gather_contact_info(url):
         logging.info(f'{get_timestamp()} - No dedicated contact page found; using landing page.')
 
     for cp_url in contact_pages:
-        sub = fetch_data_with_error_handling(cp_url, headers)
+        sub = fetch_data_with_error_handling(cp_url)
         if not sub:
             continue
         sub_soup = BeautifulSoup(sub.text, 'lxml')
@@ -456,7 +530,7 @@ def gather_contact_info(url):
 
     if not final_phones:
         for result in search_google(company_name):
-            g_res = fetch_data_with_error_handling(result, headers)
+            g_res = fetch_data_with_error_handling(result)
             if g_res:
                 g_phones = list(get_phone(g_res.text))
                 g_emails = list(get_email(g_res.text))
@@ -516,6 +590,14 @@ def save_to_excel(contacts, output_path: str = "contacts.xlsx"):
     wb.save(output_path)
     logging.info(f'{get_timestamp()} - Saved results to {output_path}')
 
+
+def save_to_json(contacts, output_path: str = "contacts.json"):
+    """Save contacts to JSON file."""
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(contacts, f, indent=2, ensure_ascii=False)
+    logging.info(f'{get_timestamp()} - Saved results to {output_path}')
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def _normalize_url(url: str) -> str:
@@ -567,7 +649,26 @@ def main():
         default=3,
         help="Number of concurrent scrape workers (default: 3)",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Also save output as JSON file",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=30,
+        help="Request timeout in seconds (default: 30)",
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose logging",
+    )
     args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     print("\n" + "=" * 50)
     print("  ContactInfoScraper  —  AI-Enhanced Edition")
@@ -625,7 +726,14 @@ def main():
                     print(f"  AI Note : {contact_info['AI Summary'] or '—'}")
                     print(f"  {'─'*46}\n")
 
+    # Apply phone deduplication to all contacts
+    for contact in contacts:
+        contact['Phone'] = dedup_and_normalize_phones(set(contact.get('Phone', [])))
+
     save_to_excel(contacts, args.output)
+    if args.json:
+        json_path = args.output.replace('.xlsx', '.json')
+        save_to_json(contacts, json_path)
     print(f"\n  Done! Results saved to {args.output}\n")
 
 
