@@ -1,0 +1,7 @@
+# Proxies for scraping
+# Format: http://host:port OR http://user:pass@host:port
+# One per line, lines starting with # are ignored
+
+# Example:
+# http://proxy1.example.com:8080
+# http://user:pass@proxy2.example.com:3128

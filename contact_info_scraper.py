@@ -21,8 +21,32 @@ from datetime import datetime
 
 # ── OpenRouter AI config ──────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL   = "arcee-ai/trinity-large-preview:free"
+OPENROUTER_MODEL   = "minimax/minimax-m2.5"
 OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
+
+# ── Proxy config ──────────────────────────────────────────────────────────────
+def load_proxies(proxy_file: str = "proxies.txt") -> list:
+    """Load proxies from file (one per line, format: http://user:pass@host:port or just http://host:port)"""
+    proxies = []
+    if os.path.exists(proxy_file):
+        with open(proxy_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    proxies.append(line)
+    return proxies
+
+PROXY_LIST = load_proxies()
+PROXY_INDEX = 0
+
+def get_next_proxy():
+    """Return next proxy as requests format dict, or None if no proxies available"""
+    global PROXY_INDEX
+    if not PROXY_LIST:
+        return None
+    proxy = PROXY_LIST[PROXY_INDEX % len(PROXY_LIST)]
+    PROXY_INDEX += 1
+    return {"http": proxy, "https": proxy}
 
 # Configure logging
 logging.basicConfig(
@@ -205,7 +229,8 @@ def _call_llm(prompt: str, url: str = "", max_tokens: int = 600) -> str:
         "max_tokens": max_tokens,
     }
     try:
-        res = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=30)
+        proxies = get_next_proxy()
+        res = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=30, proxies=proxies)
         res.raise_for_status()
         content = res.json()["choices"][0]["message"].get("content")
         return (content or "").strip()
@@ -266,11 +291,19 @@ def llm_validate_and_merge(
     regex_emails: list, regex_phones: list,
     ai_emails: list, ai_phones: list,
     url: str,
+    jsonld_emails: set = None,
+    jsonld_phones: set = None,
 ) -> tuple[list, list]:
     """
     Ask the LLM to merge regex + AI results and remove false positives.
     Returns cleaned (emails, phones).
     """
+    # Track JSON-LD sources for fallback
+    if jsonld_emails is None:
+        jsonld_emails = set()
+    if jsonld_phones is None:
+        jsonld_phones = set()
+    
     all_emails = list(set(regex_emails) | set(ai_emails))
     all_phones = list(set(str(p) for p in regex_phones) | set(ai_phones))
 
@@ -311,7 +344,16 @@ Strict rules — READ CAREFULLY:
     except Exception as e:
         logging.warning(f"{get_timestamp()} - LLM validation parse error: {e}")
 
-    return all_emails, all_phones
+    # Fallback: if LLM returned empty/bad but we had JSON-LD data, preserve it
+    final_emails = [e.strip() for e in data.get("emails", []) if e.strip()] if match else []
+    final_phones = [p.strip() for p in data.get("phones", []) if p.strip()] if match else []
+    
+    if (not final_emails and jsonld_emails) or (not final_phones and jsonld_phones):
+        logging.info(f"{get_timestamp()} - LLM returned empty, preserving JSON-LD data")
+        final_emails = list(jsonld_emails) if not final_emails else final_emails
+        final_phones = list(jsonld_phones) if not final_phones else final_phones
+    
+    return final_emails, final_phones
 
 # ── Core scraping helpers ─────────────────────────────────────────────────────
 
@@ -332,7 +374,7 @@ def _browser_headers(url: str) -> dict:
         "User-Agent": random.choice(_USER_AGENTS),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Encoding": "gzip, deflate",
         "Referer": origin,
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
@@ -349,13 +391,19 @@ def log_no_results(info_type, source):
 
 def fetch_data_with_error_handling(url, headers=None, max_retries: int = 3):
     session = requests.Session()
+    # Ensure we handle compressed responses properly
+    session.headers.update({"Accept-Encoding": "gzip, deflate"})
     for attempt in range(max_retries):
         try:
             req_headers = _browser_headers(url)
             if headers:
                 req_headers.update(headers)
-            res = session.get(url, headers=req_headers, timeout=20, allow_redirects=True)
+            proxies = get_next_proxy()
+            res = session.get(url, headers=req_headers, timeout=20, allow_redirects=True, proxies=proxies)
             res.raise_for_status()
+            # Force decompression if content is still compressed
+            if hasattr(res, 'content'):
+                res.text  # This triggers decompression
             return res
         except requests.exceptions.RequestException as e:
             delay = 2 ** attempt
@@ -495,7 +543,8 @@ def gather_contact_info(url):
     # ── Step 3: AI validation & merge ─────────────────────────────────────────
     print("  [3/3] AI validating & merging results...")
     final_emails, final_phones = llm_validate_and_merge(
-        regex_emails, regex_phones, ai_emails, ai_phones, res.url
+        regex_emails, regex_phones, ai_emails, ai_phones, res.url,
+        jsonld_emails=ld_emails, jsonld_phones=ld_phones
     )
 
     # ── Fallback chain if phones still empty ─────────────────────────────────
@@ -665,7 +714,18 @@ def main():
         action="store_true",
         help="Enable verbose logging",
     )
+    parser.add_argument(
+        "--proxy-file",
+        default="proxies.txt",
+        help="File containing proxy list (one per line)",
+    )
     args = parser.parse_args()
+
+    # Load proxies if file exists
+    global PROXY_LIST
+    if args.proxy_file and os.path.exists(args.proxy_file):
+        PROXY_LIST = load_proxies(args.proxy_file)
+        logging.info(f"{get_timestamp()} - Loaded {len(PROXY_LIST)} proxies from {args.proxy_file}")
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)

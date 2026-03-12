@@ -1,0 +1,37 @@
+[
+  {
+    "Website": "https://render.com/",
+    "Email": [
+      "support@render.com"
+    ],
+    "Phone": [],
+    "AI Summary": "Render is a cloud hosting platform offering various web services, and the contact information found is a customer support email address."
+  },
+  {
+    "Website": "https://stripe.com/",
+    "Email": [
+      "sales@stripe.com"
+    ],
+    "Phone": [
+      "888 926 2289"
+    ],
+    "AI Summary": "Stripe is a payment processing company offering sales contact for businesses interested in their services."
+  },
+  {
+    "Website": "https://github.com/",
+    "Email": [],
+    "Phone": [],
+    "AI Summary": "GitHub support page for software and product help - no direct contact information provided in the text"
+  },
+  {
+    "Website": "https://celltronics.lk/",
+    "Email": [
+      "info@celltronics.lk"
+    ],
+    "Phone": [
+      "011 2574475",
+      "077 748 9289"
+    ],
+    "AI Summary": "Celltronics (Pvt) Ltd is an electronics retailer in Colombo, Sri Lanka with phone contact numbers for hotline and office inquiries."
+  }
+]

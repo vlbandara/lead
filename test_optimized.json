@@ -1,0 +1,34 @@
+[
+  {
+    "Website": "https://render.com/",
+    "Email": [
+      "support@render.com"
+    ],
+    "Phone": [],
+    "AI Summary": "Render is a cloud platform offering web services, static sites, and databases; the contact page provides support@render.com for customer support inquiries."
+  },
+  {
+    "Website": "https://stripe.com/",
+    "Email": [
+      "sales@stripe.com"
+    ],
+    "Phone": [
+      "888 926 2289"
+    ],
+    "AI Summary": "Stripe sales contact page for businesses interested in their payment processing services."
+  },
+  {
+    "Website": "https://github.com/",
+    "Email": [],
+    "Phone": [],
+    "AI Summary": "The webpage content is heavily obfuscated or encrypted, containing no recognizable email addresses or phone numbers."
+  },
+  {
+    "Website": "https://celltronics.lk/",
+    "Email": [
+      "b@M.Gf"
+    ],
+    "Phone": [],
+    "AI Summary": "Unable to extract contact information from the webpage as the content appears to be heavily obfuscated or corrupted."
+  }
+]
