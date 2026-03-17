@@ -139,7 +139,7 @@ Some sites block plain HTTP requests and return **403 Forbidden**. You can enabl
    Or in `.env`: `USE_BROWSER_FALLBACK=1`
 3. If Playwright is not installed, the scraper still works; it simply skips the browser fallback and continues to fail on blocked URLs.
 
-On Render, you’d need to add Chromium to the build (e.g. a buildpack or install step for Playwright browsers) and set `USE_BROWSER_FALLBACK=1` in the service environment.
+**Note:** Browser fallback is not available on Render’s free tier (installing Chromium in the build requires root and fails). Use it when running locally or on a VPS/Docker where you can run `playwright install chromium`.
 
 ## Notes
 

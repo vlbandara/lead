@@ -6,5 +6,3 @@ googlesearch-python>=1.2
 python-dotenv>=1.0,<2
 Flask>=3.0,<4
 gunicorn>=21.0,<23
-# Optional: for sites that block scraping (403). Enable with USE_BROWSER_FALLBACK=1
-playwright>=1.40,<2
