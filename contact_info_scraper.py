@@ -52,15 +52,13 @@ def get_next_proxy():
     PROXY_INDEX += 1
     return {"http": proxy, "https": proxy}
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("log.txt"),
-        logging.StreamHandler()
-    ]
-)
+# Configure logging (FileHandler only if writable, e.g. not on Render's read-only fs)
+_log_handlers = [logging.StreamHandler()]
+try:
+    _log_handlers.append(logging.FileHandler("log.txt"))
+except (OSError, PermissionError):
+    pass
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", handlers=_log_handlers)
 
 # Tracking/analytics query parameters to strip from stored URLs
 _TRACKING_PARAMS = {
@@ -398,7 +396,10 @@ def _fetch_with_browser(url: str):
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        logging.warning(f"{get_timestamp()} - Playwright not installed; run: pip install playwright && playwright install chromium")
+        logging.warning(
+            f"{get_timestamp()} - Browser fallback skipped (Playwright not installed). "
+            "For local use: pip install playwright && playwright install chromium"
+        )
         return None
     try:
         with sync_playwright() as p:
