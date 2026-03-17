@@ -123,6 +123,24 @@ Open http://localhost:5001 — drop a CSV or choose a file, then click **Enrich 
 
 Alternatively, use the included `render.yaml` (Blueprint) and add `OPENROUTER_API_KEY` in the Render dashboard after the service is created.
 
+### When sites block scraping (403 Forbidden)
+
+Some sites block plain HTTP requests and return **403 Forbidden**. You can enable a **browser fallback** so that when a URL returns 403 (or 401/405/429), the scraper tries again using a headless Chromium browser (Playwright), which often succeeds because it looks like a real browser.
+
+1. Install Playwright and its browser:
+   ```bash
+   pip install playwright
+   playwright install chromium
+   ```
+2. Enable the fallback via environment variable:
+   ```bash
+   export USE_BROWSER_FALLBACK=1
+   ```
+   Or in `.env`: `USE_BROWSER_FALLBACK=1`
+3. If Playwright is not installed, the scraper still works; it simply skips the browser fallback and continues to fail on blocked URLs.
+
+On Render, you’d need to add Chromium to the build (e.g. a buildpack or install step for Playwright browsers) and set `USE_BROWSER_FALLBACK=1` in the service environment.
+
 ## Notes
 
 - If you are using Windows, you can execute the ''OpenCmdHere.bat'' so you can run all the commands from there.

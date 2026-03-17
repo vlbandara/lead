@@ -24,6 +24,10 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL   = "minimax/minimax-m2.5"
 OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
 
+# ── Browser fallback (for sites that block requests with 403) ──────────────────
+USE_BROWSER_FALLBACK = os.getenv("USE_BROWSER_FALLBACK", "").strip().lower() in ("1", "true", "yes")
+_BROWSER_BLOCKING_CODES = (403, 401, 405, 429)  # try headless browser when these occur
+
 # ── Proxy config ──────────────────────────────────────────────────────────────
 def load_proxies(proxy_file: str = "proxies.txt") -> list:
     """Load proxies from file (one per line, format: http://user:pass@host:port or just http://host:port)"""
@@ -384,6 +388,54 @@ def _browser_headers(url: str) -> dict:
         "Cache-Control": "max-age=0",
     }
 
+
+def _fetch_with_browser(url: str):
+    """
+    Fetch a URL using a headless browser (Playwright). Use when the site blocks
+    normal HTTP requests (e.g. 403 Forbidden). Returns a response-like object
+    with .text and .url, or None on failure.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        logging.warning(f"{get_timestamp()} - Playwright not installed; run: pip install playwright && playwright install chromium")
+        return None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=random.choice(_USER_AGENTS),
+                viewport={"width": 1280, "height": 720},
+                ignore_https_errors=True,
+            )
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=25000)
+            final_url = page.url
+            html = page.content()
+            context.close()
+            browser.close()
+        # Response-like object so downstream code can use .text and .url
+        class _BrowserResponse:
+            pass
+        resp = _BrowserResponse()
+        resp.text = html
+        resp.url = final_url
+        logging.info(f"{get_timestamp()} - Fetched via browser fallback: {url}")
+        return resp
+    except Exception as e:
+        logging.warning(f"{get_timestamp()} - Browser fetch failed for {url}: {e}")
+        return None
+
+
+def _is_blocking_http_error(exc: requests.exceptions.RequestException) -> bool:
+    """True if the error is an HTTP response that might be bypassed by a real browser (e.g. 403)."""
+    if not isinstance(exc, requests.exceptions.HTTPError):
+        return False
+    if getattr(exc, "response", None) is None:
+        return False
+    return getattr(exc.response, "status_code", None) in _BROWSER_BLOCKING_CODES
+
+
 def log_no_results(info_type, source):
     msg = f'{get_timestamp()} - No {info_type} found on {source}.'
     logging.info(msg)
@@ -391,8 +443,8 @@ def log_no_results(info_type, source):
 
 def fetch_data_with_error_handling(url, headers=None, max_retries: int = 3):
     session = requests.Session()
-    # Ensure we handle compressed responses properly
     session.headers.update({"Accept-Encoding": "gzip, deflate"})
+    last_exception = None
     for attempt in range(max_retries):
         try:
             req_headers = _browser_headers(url)
@@ -401,17 +453,19 @@ def fetch_data_with_error_handling(url, headers=None, max_retries: int = 3):
             proxies = get_next_proxy()
             res = session.get(url, headers=req_headers, timeout=20, allow_redirects=True, proxies=proxies)
             res.raise_for_status()
-            # Force decompression if content is still compressed
             if hasattr(res, 'content'):
-                res.text  # This triggers decompression
+                res.text  # trigger decompression
             return res
         except requests.exceptions.RequestException as e:
+            last_exception = e
             delay = 2 ** attempt
             logging.warning(f"{get_timestamp()} - Error accessing URL: {url}, Error: {e} (attempt {attempt + 1}/{max_retries}, retry in {delay}s)")
             if attempt < max_retries - 1:
                 time.sleep(delay)
-            else:
-                return None
+    # All retries failed: try browser fallback when site blocks with 403 etc.
+    if USE_BROWSER_FALLBACK and last_exception and _is_blocking_http_error(last_exception):
+        logging.info(f"{get_timestamp()} - Trying browser fallback for blocked URL: {url}")
+        return _fetch_with_browser(url)
     return None
 
 # Patterns that indicate a dedicated contact page by URL path
