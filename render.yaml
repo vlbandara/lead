@@ -6,6 +6,7 @@ services:
     name: contact-enricher
     runtime: python
     plan: free
+    # Add "playwright install chromium --with-deps" if you set USE_BROWSER_FALLBACK=1
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn --bind 0.0.0.0:$PORT --timeout 120 app:app"
     envVars:

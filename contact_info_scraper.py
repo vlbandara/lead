@@ -463,9 +463,13 @@ def fetch_data_with_error_handling(url, headers=None, max_retries: int = 3):
             if attempt < max_retries - 1:
                 time.sleep(delay)
     # All retries failed: try browser fallback when site blocks with 403 etc.
-    if USE_BROWSER_FALLBACK and last_exception and _is_blocking_http_error(last_exception):
-        logging.info(f"{get_timestamp()} - Trying browser fallback for blocked URL: {url}")
-        return _fetch_with_browser(url)
+    if last_exception and _is_blocking_http_error(last_exception):
+        if USE_BROWSER_FALLBACK:
+            logging.info(f"{get_timestamp()} - Trying browser fallback for blocked URL: {url}")
+            return _fetch_with_browser(url)
+        logging.warning(
+            f"{get_timestamp()} - URL blocked (403 etc.). Set USE_BROWSER_FALLBACK=1 and install Playwright+Chromium to retry with a headless browser."
+        )
     return None
 
 # Patterns that indicate a dedicated contact page by URL path
