@@ -469,7 +469,7 @@ def fetch_data_with_error_handling(url, headers=None, max_retries: int = 3):
             logging.info(f"{get_timestamp()} - Trying browser fallback for blocked URL: {url}")
             return _fetch_with_browser(url)
         logging.warning(
-            f"{get_timestamp()} - URL blocked (403 etc.). Set USE_BROWSER_FALLBACK=1 and install Playwright+Chromium to retry with a headless browser."
+            f"{get_timestamp()} - URL blocked (403). For this site, run locally with USE_BROWSER_FALLBACK=1 and Playwright+Chromium to use browser fallback."
         )
     return None
 
@@ -528,12 +528,68 @@ def get_phone_from_social_media(url):
         return get_phone(BeautifulSoup(res.text, 'lxml').get_text())
     return []
 
+
+# ── Free search fallback (no API key) when site blocks scraping ───────────────
+
+def _search_duckduckgo(query: str, max_results: int = 10) -> list:
+    """Run DuckDuckGo text search; returns list of dicts with title, href, body. No API key."""
+    try:
+        from duckduckgo_search import DDGS
+    except ImportError:
+        logging.warning(f"{get_timestamp()} - duckduckgo-search not installed; pip install duckduckgo-search for search fallback")
+        return []
+    try:
+        with DDGS() as ddgs:
+            return list(ddgs.text(query, max_results=max_results))
+    except Exception as e:
+        logging.warning(f"{get_timestamp()} - DuckDuckGo search failed: {e}")
+        return []
+
+
+def gather_contact_info_via_search(url: str):
+    """
+    When the site returns 403 or is unreachable, try to get contact info from
+    search result snippets (DuckDuckGo, free, no API key). Returns same shape
+    as gather_contact_info or None.
+    """
+    canonical_url = clean_url(url)
+    parsed = urlparse(canonical_url)
+    domain = parsed.netloc or canonical_url
+    # Query that often surfaces contact info in snippets
+    query = f"{domain} contact email phone"
+    logging.info(f"{get_timestamp()} - Search fallback for blocked/unreachable URL: {query}")
+    results = _search_duckduckgo(query, max_results=12)
+    if not results:
+        return None
+    combined_text = " ".join(
+        (r.get("title") or "") + " " + (r.get("body") or "")
+        for r in results
+    )
+    emails = list(get_email(combined_text))
+    phones = [p for p in get_phone(combined_text) if _phone_has_min_digits(p)]
+    emails = remove_duplicates(emails)
+    phones = remove_duplicates(phones)
+    if not emails and not phones:
+        return None
+    logging.info(f"{get_timestamp()} - Search fallback found: emails={len(emails)}, phones={len(phones)}")
+    return {
+        "Website": canonical_url,
+        "Email": emails,
+        "Phone": phones,
+        "AI Summary": "Contact info from search results (site was blocked or unreachable).",
+    }
+
+
 # ── Main gather function ──────────────────────────────────────────────────────
 
 def gather_contact_info(url):
     res = fetch_data_with_error_handling(url)
 
     if not res:
+        # Free search fallback: get contact info from DuckDuckGo snippets (no API key)
+        contact = gather_contact_info_via_search(url)
+        if contact:
+            return contact
         return None
 
     canonical_url = clean_url(res.url)
